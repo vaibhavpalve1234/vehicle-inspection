@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "vehicle-inspection-app",
+    "name": "Vehicle Inspection",
     "slug": "vehicle-inspection-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,16 +10,33 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.octobotics.vehicleinspection",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to attach inspection pictures.",
+          "cameraPermission": "The app needs camera access to take live vehicle inspection photos."
+        }
+      ],
+      "expo-sharing"
+    ]
   }
 }
