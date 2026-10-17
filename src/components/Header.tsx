@@ -1,5 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { Colors } from '../theme/colors';
+import { triggerHaptic } from '../utils/haptics';
+import { HealthScoreDial } from './HealthScoreDial';
 
 interface HeaderProps {
   onReset: () => void;
@@ -11,59 +14,93 @@ interface HeaderProps {
     photos: number;
     totalPhotos: number;
   };
+  totalSections?: number;
+  completedSections?: number;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onReset, onLoadSample, stats }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onReset,
+  onLoadSample,
+  stats,
+  totalSections = 36,
+  completedSections = 0,
+}) => {
+  // Calculate dynamic 0-100 Vehicle Condition Health Score
+  // Base 100 with deduction weights per failed (-3.5) and attention (-1.2)
+  const calculatedScore = Math.max(
+    10,
+    Math.round(100 - stats.failed * 3.5 - stats.attention * 1.2)
+  );
+
   const confirmReset = () => {
+    triggerHaptic('warning');
     Alert.alert(
       'Reset Inspection',
       'Are you sure you want to start a fresh inspection? All unsaved data will be cleared.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: onReset },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            triggerHaptic('heavy');
+            onReset();
+          },
+        },
       ]
     );
   };
 
+  const handleSample = () => {
+    triggerHaptic('medium');
+    onLoadSample();
+  };
+
   return (
     <View style={styles.container}>
+      {/* Top Brand & Actions Bar */}
       <View style={styles.topRow}>
         <View>
           <View style={styles.brandRow}>
-            <Text style={styles.brandText}>Inspect </Text>
-            <Text style={styles.brandAccent}>AutoCar</Text>
+            <View style={styles.brandIconBox}>
+              <Text style={styles.brandIcon}>⚡</Text>
+            </View>
+            <Text style={styles.brandText}>INSPECT </Text>
+            <Text style={styles.brandAccent}>AUTOCAR</Text>
           </View>
-          <Text style={styles.subtitle}>PDI / PPI Live Inspection Report</Text>
+          <Text style={styles.subtitle}>PDI & Comprehensive Vehicle Condition Report</Text>
         </View>
 
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.pillBtn} onPress={onLoadSample}>
-            <Text style={styles.pillBtnText}>Load Sample</Text>
+          <TouchableOpacity style={styles.pillBtn} onPress={handleSample} activeOpacity={0.7}>
+            <Text style={styles.pillBtnText}>Sample</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.pillBtn, styles.resetBtn]} onPress={confirmReset}>
+          <TouchableOpacity style={[styles.pillBtn, styles.resetBtn]} onPress={confirmReset} activeOpacity={0.7}>
             <Text style={[styles.pillBtnText, styles.resetBtnText]}>Reset</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Quick Status Counter Bar */}
-      <View style={styles.counterBar}>
-        <View style={[styles.counterBadge, styles.badgeOk]}>
-          <Text style={styles.counterNum}>{stats.ok}</Text>
-          <Text style={styles.counterLabel}>OK</Text>
-        </View>
-        <View style={[styles.counterBadge, styles.badgeAttn]}>
-          <Text style={styles.counterNum}>{stats.attention}</Text>
-          <Text style={styles.counterLabel}>Attention</Text>
-        </View>
-        <View style={[styles.counterBadge, styles.badgeFailed]}>
-          <Text style={styles.counterNum}>{stats.failed}</Text>
-          <Text style={styles.counterLabel}>Failed</Text>
-        </View>
-        <View style={[styles.counterBadge, styles.badgePhotos]}>
-          <Text style={styles.counterNum}>{stats.photos}/{stats.totalPhotos}</Text>
-          <Text style={styles.counterLabel}>Photos</Text>
-        </View>
+      {/* Dynamic Health Score & Rating Dial */}
+      <HealthScoreDial score={calculatedScore} stats={stats} />
+
+      {/* Categories Progress Bar */}
+      <View style={styles.categoryProgressRow}>
+        <Text style={styles.categoryProgressText}>
+          Inspection Progress: {completedSections} of {totalSections} Categories Reviewed
+        </Text>
+        <Text style={styles.photoCountBadge}>
+          📸 {stats.photos}/{stats.totalPhotos} Photos
+        </Text>
+      </View>
+
+      <View style={styles.progressBarTrack}>
+        <View
+          style={[
+            styles.progressBarFill,
+            { width: `${Math.min(Math.round((completedSections / Math.max(totalSections, 1)) * 100), 100)}%` },
+          ]}
+        />
       </View>
     </View>
   );
@@ -71,37 +108,50 @@ export const Header: React.FC<HeaderProps> = ({ onReset, onLoadSample, stats }) 
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#0f172a',
+    backgroundColor: Colors.background.primary,
     paddingTop: 48,
     paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 3,
-    borderBottomColor: '#ea580c',
+    paddingBottom: 14,
+    borderBottomWidth: 1.5,
+    borderBottomColor: Colors.background.border,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 4,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  brandIconBox: {
+    backgroundColor: '#FF6B00',
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  brandIcon: {
+    fontSize: 12,
+  },
   brandText: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '800',
+    color: Colors.text.primary,
+    fontSize: 18,
+    fontWeight: '900',
     letterSpacing: -0.5,
   },
   brandAccent: {
-    color: '#ea580c',
-    fontSize: 20,
-    fontWeight: '800',
+    color: Colors.accent.primary,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    color: '#94a3b8',
-    fontSize: 11,
+    color: Colors.text.muted,
+    fontSize: 10.5,
     fontWeight: '500',
     marginTop: 2,
   },
@@ -110,68 +160,50 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pillBtn: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#162238',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#243550',
   },
   pillBtnText: {
-    color: '#e2e8f0',
+    color: '#94a3b8',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   resetBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: '#ef4444',
+    borderColor: '#7f1d1d',
+    backgroundColor: '#450a0a',
   },
   resetBtnText: {
     color: '#f87171',
   },
-  counterBar: {
+  categoryProgressRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
-  },
-  counterBadge: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 6,
-    gap: 4,
+    marginTop: 10,
+    marginBottom: 4,
   },
-  badgeOk: {
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.4)',
-  },
-  badgeAttn: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.4)',
-  },
-  badgeFailed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-  },
-  badgePhotos: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.4)',
-  },
-  counterNum: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  counterLabel: {
-    color: '#cbd5e1',
-    fontSize: 10,
+  categoryProgressText: {
+    fontSize: 10.5,
+    color: Colors.text.secondary,
     fontWeight: '600',
+  },
+  photoCountBadge: {
+    fontSize: 10.5,
+    color: Colors.accent.secondary,
+    fontWeight: '700',
+  },
+  progressBarTrack: {
+    height: 3,
+    backgroundColor: '#1b2537',
+    borderRadius: 1.5,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: Colors.accent.primary,
   },
 });

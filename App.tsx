@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -20,6 +20,8 @@ import { PhotoSlotCard } from './src/components/PhotoSlotCard';
 import { ExtraPhotosSection } from './src/components/ExtraPhotosSection';
 import { RemarksCard } from './src/components/RemarksCard';
 import { PdfExportModal } from './src/components/PdfExportModal';
+import { Colors } from './src/theme/colors';
+import { triggerHaptic } from './src/utils/haptics';
 
 type ActiveTab = 'checkpoints' | 'photos' | 'remarks';
 
@@ -29,6 +31,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Load saved inspection from local storage on app launch
   useEffect(() => {
@@ -53,22 +56,30 @@ export default function App() {
   // Reset to empty inspection
   const handleReset = async () => {
     const initial = StorageService.createInitialInspection();
-    // Clear out observation values and photos for fresh start
-    initial.standardPhotos.forEach((p) => {
-      p.uri = undefined;
-      p.localPath = undefined;
-      p.observation = '';
-    });
-    initial.extraPhotos = [];
-    initial.remarks = '';
     updateData(initial);
+    setSearchQuery('');
+    setActiveTab('checkpoints');
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    Alert.alert('Inspection Reset', 'The application has been reset and is ready for a new inspection.');
   };
 
-  // Load sample data matching the user's PDF report
+  // Load sample data matching the reference report
   const handleLoadSample = async () => {
+    const sample = StorageService.createSampleInspection();
+    updateData(sample);
+    setSearchQuery('');
+    setActiveTab('checkpoints');
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    Alert.alert('Sample Loaded', 'Loaded inspection data matching the Tigor reference report.');
+  };
+
+  // Automatically reset the complete application after PDF is generated
+  const handleResetAfterPdfGeneration = async () => {
     const initial = StorageService.createInitialInspection();
     updateData(initial);
-    Alert.alert('Sample Loaded', 'Loaded inspection data matching the provided Tigor report.');
+    setSearchQuery('');
+    setActiveTab('checkpoints');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   // Update vehicle info
@@ -113,11 +124,17 @@ export default function App() {
     updateData({ ...data, remarks });
   };
 
+  const handleTabSwitch = (tab: ActiveTab) => {
+    triggerHaptic('light');
+    setActiveTab(tab);
+  };
+
   if (isLoading || !data) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#ea580c" />
-        <Text style={styles.loadingText}>Loading Vehicle Inspection Data...</Text>
+        <ActivityIndicator size="large" color={Colors.accent.primary} />
+        <Text style={styles.loadingTitle}>INSPECT AUTOCAR</Text>
+        <Text style={styles.loadingText}>Initializing Inspection Database...</Text>
       </View>
     );
   }
@@ -127,17 +144,30 @@ export default function App() {
     ok: 0,
     attention: 0,
     failed: 0,
+    totalItems: 0,
     photos: data.standardPhotos.filter((p) => p.uri).length,
     totalPhotos: data.standardPhotos.length,
   };
 
+  let completedSectionsCount = 0;
+
   data.sections.forEach((sec) => {
+    let sectionDone = true;
     sec.items.forEach((item) => {
+      stats.totalItems++;
       if (item.status === 'OK') stats.ok++;
       else if (item.status === 'Attention') stats.attention++;
       else if (item.status === 'Failed') stats.failed++;
+      else sectionDone = false; // item is not yet checked
     });
+    if (sectionDone && sec.items.length > 0) {
+      completedSectionsCount++;
+    }
   });
+
+  const percentProgress = Math.round(
+    ((stats.ok + stats.attention + stats.failed) / Math.max(stats.totalItems, 1)) * 100
+  );
 
   // Filter sections by search query
   const filteredSections = data.sections.filter((sec) => {
@@ -149,40 +179,55 @@ export default function App() {
     );
   });
 
+  // Jump to next section with issues or unreviewed checkpoints
+  const handleJumpNext = () => {
+    triggerHaptic('medium');
+    if (activeTab !== 'checkpoints') {
+      setActiveTab('checkpoints');
+    }
+    // Scroll down to the content area
+    scrollRef.current?.scrollTo({ y: 350, animated: true });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.background.primary} />
 
-      {/* Header with live statistics */}
+      {/* Modern Automotive Header with Live Health Score Dial */}
       <Header
         onReset={handleReset}
         onLoadSample={handleLoadSample}
         stats={stats}
+        totalSections={data.sections.length}
+        completedSections={completedSectionsCount}
       />
 
-      {/* Tab Segment Switcher */}
+      {/* Segmented Tab Bar */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'checkpoints' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('checkpoints')}
+          activeOpacity={0.8}
+          onPress={() => handleTabSwitch('checkpoints')}
         >
           <Text style={[styles.tabBtnText, activeTab === 'checkpoints' && styles.tabBtnTextActive]}>
-            📋 Tables (1-36)
+            📋 36 Sections
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'photos' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('photos')}
+          activeOpacity={0.8}
+          onPress={() => handleTabSwitch('photos')}
         >
           <Text style={[styles.tabBtnText, activeTab === 'photos' && styles.tabBtnTextActive]}>
-            📸 Photos ({stats.photos}/{stats.totalPhotos})
+            📸 Studio ({stats.photos}/{stats.totalPhotos})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'remarks' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('remarks')}
+          activeOpacity={0.8}
+          onPress={() => handleTabSwitch('remarks')}
         >
           <Text style={[styles.tabBtnText, activeTab === 'remarks' && styles.tabBtnTextActive]}>
             📝 Remarks
@@ -190,20 +235,26 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Main Content Area */}
-      <ScrollView style={styles.contentScroll} contentContainerStyle={styles.scrollContent}>
+      {/* Main Scrollable Content */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.contentScroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         {activeTab === 'checkpoints' && (
           <View>
-            {/* Customer & Vehicle Information */}
+            {/* Customer & Vehicle Info Card */}
             <VehicleInfoCard info={data.info} onChangeInfo={handleUpdateInfo} />
 
-            {/* Search Filter Bar */}
+            {/* High-tech Search Bar */}
             <View style={styles.searchBarContainer}>
+              <Text style={styles.searchIcon}>🔍</Text>
               <TextInput
                 style={styles.searchInput}
                 value={searchQuery}
-                placeholder="Search checkpoint or section (e.g. Bumper, Brakes, AC)..."
-                placeholderTextColor="#94a3b8"
+                placeholder="Search checkpoint or part (e.g. Bumper, Brakes, AC)..."
+                placeholderTextColor="#64748b"
                 onChangeText={setSearchQuery}
               />
               {searchQuery ? (
@@ -228,11 +279,18 @@ export default function App() {
         )}
 
         {activeTab === 'photos' && (
-          <View>
+          <View style={styles.photosWrapper}>
             <View style={styles.photoHeaderBox}>
-              <Text style={styles.photoHeading}>Vehicle Inspection Photo Slots</Text>
+              <View style={styles.photoHeaderTop}>
+                <Text style={styles.photoHeading}>Vehicle Camera Studio</Text>
+                <View style={styles.photoProgressPill}>
+                  <Text style={styles.photoProgressText}>
+                    {stats.photos} of {stats.totalPhotos} Slots Captured
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.photoSubheading}>
-                Upload vehicle angles as per report slots. After each upload, you can evaluate status & add observations.
+                Capture standard angle silhouettes, evaluate paint condition, and append defect annotations.
               </Text>
             </View>
 
@@ -246,7 +304,7 @@ export default function App() {
               ))}
             </View>
 
-            {/* Extra Photos Section (paint meter readings, tyre readings, extra damage closeups) */}
+            {/* Extra Defect & Paint Gauge Section */}
             <ExtraPhotosSection
               photos={data.extraPhotos}
               onAddPhoto={handleAddExtraPhoto}
@@ -261,27 +319,44 @@ export default function App() {
           </View>
         )}
 
-        {/* Extra spacing for bottom bar */}
-        <View style={{ height: 90 }} />
+        {/* Safe spacing for bottom dock */}
+        <View style={{ height: 110 }} />
       </ScrollView>
 
-      {/* Floating Bottom Bar: PDF Merge & Share */}
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomBarInfo}>
-          <Text style={styles.bottomVehicleText} numberOfLines={1}>
+      {/* Floating Glassmorphism Bottom Action Dock */}
+      <View style={styles.floatingDock}>
+        <View style={styles.dockInfoCol}>
+          <View style={styles.dockProgressRow}>
+            <Text style={styles.dockPercentText}>{percentProgress}% Complete</Text>
+            <Text style={styles.dockDefectsText}>
+              • {stats.failed + stats.attention} Issues Noted
+            </Text>
+          </View>
+          <Text style={styles.dockVehicleText} numberOfLines={1}>
             {data.info.vehicleModel || 'Vehicle'} • {data.info.registrationNumber || 'No Plate'}
-          </Text>
-          <Text style={styles.bottomCountText}>
-            {stats.photos} photos uploaded • {stats.failed + stats.attention} issues noted
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.mergeBtn}
-          onPress={() => setShowExportModal(true)}
-        >
-          <Text style={styles.mergeBtnText}>Merge & Share PDF 🚀</Text>
-        </TouchableOpacity>
+        <View style={styles.dockBtnRow}>
+          <TouchableOpacity
+            style={styles.jumpBtn}
+            activeOpacity={0.8}
+            onPress={handleJumpNext}
+          >
+            <Text style={styles.jumpBtnText}>Next ➔</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.mergeBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              triggerHaptic('medium');
+              setShowExportModal(true);
+            }}
+          >
+            <Text style={styles.mergeBtnText}>Export PDF 🚀</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* PDF Export & Share Modal */}
@@ -289,6 +364,7 @@ export default function App() {
         visible={showExportModal}
         onClose={() => setShowExportModal(false)}
         data={data}
+        onReportGenerated={handleResetAfterPdfGeneration}
       />
     </SafeAreaView>
   );
@@ -297,36 +373,48 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: Colors.background.primary,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: Colors.background.primary,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 12,
   },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 1,
+    marginTop: 8,
+  },
   loadingText: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '600',
+    fontSize: 13,
+    color: Colors.text.secondary,
+    fontWeight: '500',
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 16,
+    backgroundColor: '#0c1322',
+    paddingHorizontal: 14,
     paddingVertical: 8,
     gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.background.border,
   },
   tabBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#131e32',
+    borderWidth: 1,
+    borderColor: '#1e2d48',
   },
   tabBtnActive: {
-    backgroundColor: '#ea580c',
+    backgroundColor: '#9a3412',
+    borderColor: Colors.accent.primary,
   },
   tabBtnText: {
     fontSize: 12,
@@ -335,110 +423,172 @@ const styles = StyleSheet.create({
   },
   tabBtnTextActive: {
     color: '#ffffff',
+    fontWeight: '800',
   },
   contentScroll: {
     flex: 1,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: Colors.background.primary,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 24,
   },
   searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: 16,
-    marginVertical: 12,
-    position: 'relative',
+    marginVertical: 10,
+    backgroundColor: '#121c2e',
+    borderRadius: 10,
+    borderWidth: 1.2,
+    borderColor: '#223450',
+    paddingHorizontal: 12,
+  },
+  searchIcon: {
+    fontSize: 13,
+    marginRight: 6,
   },
   searchInput: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 14,
+    flex: 1,
     paddingVertical: 9,
-    fontSize: 13,
-    color: '#0f172a',
+    fontSize: 12.5,
+    color: Colors.text.primary,
   },
   clearSearchBtn: {
-    position: 'absolute',
-    right: 12,
-    top: 9,
+    padding: 6,
   },
   clearSearchText: {
-    fontSize: 14,
-    color: '#94a3b8',
+    fontSize: 13,
+    color: '#64748b',
     fontWeight: '700',
   },
   sectionsList: {
     marginTop: 2,
   },
+  photosWrapper: {
+    paddingHorizontal: 16,
+  },
   photoHeaderBox: {
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    marginBottom: 12,
+    padding: 14,
+    backgroundColor: Colors.background.surface,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: Colors.background.border,
+    marginTop: 10,
+    marginBottom: 14,
+  },
+  photoHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   photoHeading: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    color: '#0f172a',
+    color: '#ffffff',
+  },
+  photoProgressPill: {
+    backgroundColor: '#0a101d',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#233652',
+  },
+  photoProgressText: {
+    color: Colors.accent.secondary,
+    fontSize: 10,
+    fontWeight: '700',
   },
   photoSubheading: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
-    lineHeight: 16,
+    fontSize: 11,
+    color: Colors.text.muted,
+    lineHeight: 15,
   },
   photoSlotsContainer: {
-    paddingHorizontal: 16,
+    marginTop: 4,
   },
-  bottomBar: {
+
+  /* Floating Dock */
+  floatingDock: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    bottom: 14,
+    left: 14,
+    right: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.94)',
+    borderWidth: 1.2,
+    borderColor: '#2b3f63',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  bottomBarInfo: {
+  dockInfoCol: {
     flex: 1,
     marginRight: 10,
   },
-  bottomVehicleText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0f172a',
+  dockProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  bottomCountText: {
+  dockPercentText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.status.ok.text,
+  },
+  dockDefectsText: {
     fontSize: 11,
-    color: '#64748b',
+    color: Colors.status.attention.text,
+    fontWeight: '600',
+  },
+  dockVehicleText: {
+    fontSize: 11.5,
+    color: '#94a3b8',
+    fontWeight: '600',
     marginTop: 2,
+  },
+  dockBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  jumpBtn: {
+    backgroundColor: '#162238',
+    borderWidth: 1,
+    borderColor: '#2b3f63',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  jumpBtnText: {
+    color: '#cbd5e1',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   mergeBtn: {
     backgroundColor: '#ea580c',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f97316',
     shadowColor: '#ea580c',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
     shadowRadius: 6,
     elevation: 4,
   },
   mergeBtnText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
   },
 });

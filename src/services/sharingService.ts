@@ -7,6 +7,17 @@ export class SharingService {
    */
   static async downloadPdf(pdfUri: string): Promise<boolean> {
     try {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const link = document.createElement('a');
+        link.href = pdfUri;
+        link.download = `Inspection_Report_${Date.now()}.pdf`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return true;
+      }
+
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
         await Sharing.shareAsync(pdfUri, {

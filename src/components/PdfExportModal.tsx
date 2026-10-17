@@ -11,48 +11,126 @@ import {
 import { InspectionData } from '../types/inspection';
 import { PdfGeneratorService } from '../services/pdfGenerator';
 import { SharingService } from '../services/sharingService';
+import { Colors } from '../theme/colors';
+import { triggerHaptic } from '../utils/haptics';
 
 interface PdfExportModalProps {
   visible: boolean;
   onClose: () => void;
   data: InspectionData;
+  onReportGenerated?: () => void;
+}
+
+interface ReportSnapshot {
+  vehicleModel: string;
+  reg: string;
+  customerName: string;
+  inspectorName: string;
+  score: number;
+  okCount: number;
+  attnCount: number;
+  failCount: number;
+  photosCount: number;
 }
 
 export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   visible,
   onClose,
   data,
+  onReportGenerated,
 }) => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generatedPdfUri, setGeneratedPdfUri] = useState<string | null>(null);
+  const [reportSnapshot, setReportSnapshot] = useState<ReportSnapshot | null>(null);
+
+  // Calculate live stats for preview summary
+  let okCount = 0;
+  let attnCount = 0;
+  let failCount = 0;
+  data.sections.forEach((s) => {
+    s.items.forEach((item) => {
+      if (item.status === 'OK') okCount++;
+      else if (item.status === 'Attention') attnCount++;
+      else if (item.status === 'Failed') failCount++;
+    });
+  });
+
+  const calculatedScore = Math.max(
+    10,
+    Math.round(100 - failCount * 3.5 - attnCount * 1.2)
+  );
+
+  const displayModel = reportSnapshot ? reportSnapshot.vehicleModel : (data.info.vehicleModel || 'Vehicle');
+  const displayReg = reportSnapshot ? reportSnapshot.reg : (data.info.registrationNumber || 'No Plate Entered');
+  const displayCustomer = reportSnapshot ? reportSnapshot.customerName : (data.info.customerName || 'Client Name');
+  const displayInspector = reportSnapshot ? reportSnapshot.inspectorName : (data.info.inspectorName || 'Inspector');
+  const displayScore = reportSnapshot ? reportSnapshot.score : calculatedScore;
+  const displayOk = reportSnapshot ? reportSnapshot.okCount : okCount;
+  const displayAttn = reportSnapshot ? reportSnapshot.attnCount : attnCount;
+  const displayFail = reportSnapshot ? reportSnapshot.failCount : failCount;
+  const displayPhotos = reportSnapshot
+    ? reportSnapshot.photosCount
+    : (data.standardPhotos.filter((p) => p.uri).length + data.extraPhotos.length);
 
   const handleGenerate = async () => {
     try {
+      triggerHaptic('medium');
       setIsGenerating(true);
+
+      // Snapshot current report before reset so the modal preview remains accurate
+      const snapshot: ReportSnapshot = {
+        vehicleModel: data.info.vehicleModel || 'Vehicle',
+        reg: data.info.registrationNumber || 'No Plate Entered',
+        customerName: data.info.customerName || 'Client Name',
+        inspectorName: data.info.inspectorName || 'Inspector',
+        score: calculatedScore,
+        okCount,
+        attnCount,
+        failCount,
+        photosCount: data.standardPhotos.filter((p) => p.uri).length + data.extraPhotos.length,
+      };
+      setReportSnapshot(snapshot);
+
       const uri = await PdfGeneratorService.generateReportPdf(data);
       setGeneratedPdfUri(uri);
+      triggerHaptic('light');
+
+      // Reset complete application and clear previous data for new report
+      if (onReportGenerated) {
+        onReportGenerated();
+      }
     } catch (err: any) {
+      triggerHaptic('error');
       Alert.alert('PDF Generation Failed', err?.message || 'Could not compile report PDF.');
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const handleClose = () => {
+    setGeneratedPdfUri(null);
+    setReportSnapshot(null);
+    onClose();
+  };
+
   const handleDownload = async () => {
     if (!generatedPdfUri) return;
+    triggerHaptic('light');
     await SharingService.downloadPdf(generatedPdfUri);
   };
 
   const handleShareWhatsApp = async () => {
     if (!generatedPdfUri) return;
+    triggerHaptic('light');
     await SharingService.shareOnWhatsApp(generatedPdfUri, {
-      vehicleModel: data.info.vehicleModel,
-      reg: data.info.registrationNumber,
+      vehicleModel: displayModel,
+      reg: displayReg,
     });
   };
 
-  const handleShareInstagram = async () => {
+  const handleShareGeneral = async () => {
     if (!generatedPdfUri) return;
+    triggerHaptic('light');
     await SharingService.shareOnInstagram(generatedPdfUri);
   };
 
@@ -62,30 +140,55 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         <View style={styles.sheet}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>Generate Inspection PDF</Text>
+              <Text style={styles.title}>Export Vehicle Report PDF</Text>
               <Text style={styles.subtitle}>
-                Tables first, followed by high-resolution photos & remarks
+                Official "Inspect AutoCar" Format • High-Res Photos Included
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={handleClose} style={styles.closeBtn} activeOpacity={0.7}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Report Summary Card */}
+          {/* Report Summary Card with Health Score */}
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>
-              {data.info.vehicleModel || 'Vehicle'} • {data.info.registrationNumber || 'No Plate'}
-            </Text>
-            <Text style={styles.summarySubtitle}>
-              Customer: {data.info.customerName || '—'} | Inspector: {data.info.inspectorName || '—'}
-            </Text>
-            <View style={styles.statsRow}>
-              <Text style={styles.statPill}>
-                📋 {data.sections.reduce((acc, s) => acc + s.items.length, 0)} Checkpoints
+            <View style={styles.summaryTop}>
+              <View style={styles.summaryVehicleBox}>
+                <Text style={styles.summaryTitle} numberOfLines={1}>
+                  {displayModel}
+                </Text>
+                <Text style={styles.summaryPlate}>
+                  {displayReg}
+                </Text>
+              </View>
+
+              <View style={styles.scoreBadge}>
+                <Text style={styles.scoreNumber}>{displayScore}</Text>
+                <Text style={styles.scoreLabel}>SCORE</Text>
+              </View>
+            </View>
+
+            <View style={styles.metaRow}>
+              <Text style={styles.metaItem}>
+                👤 {displayCustomer}
               </Text>
-              <Text style={styles.statPill}>
-                📸 {data.standardPhotos.filter((p) => p.uri).length + data.extraPhotos.length} Photos Attached
+              <Text style={styles.metaItem}>
+                🔧 {displayInspector}
+              </Text>
+            </View>
+
+            <View style={styles.statsRow}>
+              <Text style={[styles.statPill, styles.statOk]}>
+                ✓ {displayOk} Pass
+              </Text>
+              <Text style={[styles.statPill, styles.statAttn]}>
+                ⚠️ {displayAttn} Attn
+              </Text>
+              <Text style={[styles.statPill, styles.statFail]}>
+                ✕ {displayFail} Fail
+              </Text>
+              <Text style={styles.statPhotos}>
+                📸 {displayPhotos} Photos
               </Text>
             </View>
           </View>
@@ -93,13 +196,14 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           {!generatedPdfUri ? (
             <View style={styles.generateBox}>
               <Text style={styles.generateHint}>
-                Ready to merge inspection tables and all uploaded vehicle pictures into the official "Inspect AutoCar" PDF.
+                Compiles all 36 inspection tables, condition ratings, observation notes, and high-resolution vehicle photos into a single PDF document.
               </Text>
 
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={handleGenerate}
                 disabled={isGenerating}
+                activeOpacity={0.8}
               >
                 {isGenerating ? (
                   <View style={styles.loadingRow}>
@@ -107,43 +211,52 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     <Text style={styles.primaryBtnText}>Merging Checkpoints & Photos...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.primaryBtnText}>⚡ Generate & Merge PDF Now</Text>
+                  <Text style={styles.primaryBtnText}>⚡ Generate Official Report PDF</Text>
                 )}
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.actionsContainer}>
               <View style={styles.successBadge}>
-                <Text style={styles.successBadgeText}>✓ PDF Ready & Merged Successfully</Text>
+                <Text style={styles.successBadgeEmoji}>🎉</Text>
+                <View style={styles.successBadgeTextBox}>
+                  <Text style={styles.successBadgeText}>Report PDF Generated Successfully!</Text>
+                  <Text style={styles.successBadgeSubtext}>
+                    All previous data cleared & app reset for a new report.
+                  </Text>
+                </View>
               </View>
-
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.downloadBtn]}
-                onPress={handleDownload}
-              >
-                <Text style={styles.downloadBtnText}>📥 Download / Save PDF</Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.actionBtn, styles.whatsappBtn]}
                 onPress={handleShareWhatsApp}
+                activeOpacity={0.8}
               >
-                <Text style={styles.whatsappBtnText}>💬 Share on WhatsApp</Text>
+                <Text style={styles.whatsappBtnText}>💬 Instant Share on WhatsApp</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionBtn, styles.instagramBtn]}
-                onPress={handleShareInstagram}
+                style={[styles.actionBtn, styles.downloadBtn]}
+                onPress={handleDownload}
+                activeOpacity={0.8}
               >
-                <Text style={styles.instagramBtnText}>📸 Share on Instagram / Apps</Text>
+                <Text style={styles.downloadBtnText}>📥 Download / Save PDF Document</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.regenerateBtn}
-                onPress={handleGenerate}
-                disabled={isGenerating}
+                style={[styles.actionBtn, styles.shareBtn]}
+                onPress={handleShareGeneral}
+                activeOpacity={0.8}
               >
-                <Text style={styles.regenerateBtnText}>↻ Re-generate with latest edits</Text>
+                <Text style={styles.shareBtnText}>📤 AirDrop / Email / Other Apps</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.newReportBtn}
+                onPress={handleClose}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.newReportBtnText}>✨ Start New Inspection (App Ready)</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -156,15 +269,17 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: '#0f172a',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: 38,
+    borderWidth: 1.2,
+    borderColor: '#243552',
   },
   headerRow: {
     flexDirection: 'row',
@@ -175,143 +290,225 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0f172a',
+    color: '#ffffff',
   },
   subtitle: {
-    fontSize: 12,
-    color: '#64748b',
+    fontSize: 11,
+    color: Colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
-    padding: 6,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 20,
     width: 32,
     height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1e293b',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
+    color: '#94a3b8',
     fontSize: 14,
     fontWeight: '700',
-    color: '#475569',
   },
   summaryCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 12,
+    backgroundColor: '#162238',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.2,
+    borderColor: '#243552',
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  },
+  summaryTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryVehicleBox: {
+    flex: 1,
   },
   summaryTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#0f172a',
+    color: '#ffffff',
   },
-  summarySubtitle: {
-    fontSize: 11,
-    color: '#64748b',
+  summaryPlate: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.accent.primary,
     marginTop: 2,
-    marginBottom: 8,
+  },
+  scoreBadge: {
+    backgroundColor: '#0c1322',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.status.ok.border,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  scoreNumber: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: Colors.status.ok.text,
+  },
+  scoreLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#94a3b8',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#243552',
+    paddingVertical: 8,
+  },
+  metaItem: {
+    fontSize: 11.5,
+    color: '#cbd5e1',
+    fontWeight: '500',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
   },
   statPill: {
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    fontSize: 10.5,
+    fontWeight: '700',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  statOk: {
+    backgroundColor: Colors.status.ok.bg,
+    borderColor: Colors.status.ok.border,
+    color: Colors.status.ok.text,
+  },
+  statAttn: {
+    backgroundColor: Colors.status.attention.bg,
+    borderColor: Colors.status.attention.border,
+    color: Colors.status.attention.text,
+  },
+  statFail: {
+    backgroundColor: Colors.status.failed.bg,
+    borderColor: Colors.status.failed.border,
+    color: Colors.status.failed.text,
+  },
+  statPhotos: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#334155',
+    color: Colors.accent.secondary,
+    fontWeight: '700',
+    marginLeft: 'auto',
   },
   generateBox: {
-    alignItems: 'center',
-    paddingVertical: 10,
+    gap: 12,
   },
   generateHint: {
-    fontSize: 12,
-    color: '#64748b',
+    fontSize: 11.5,
+    color: '#94a3b8',
+    lineHeight: 16,
     textAlign: 'center',
-    marginBottom: 18,
-    lineHeight: 18,
   },
   primaryBtn: {
     backgroundColor: '#ea580c',
-    width: '100%',
+    borderRadius: 12,
     paddingVertical: 14,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   primaryBtnText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   actionsContainer: {
     gap: 10,
   },
   successBadge: {
-    backgroundColor: '#dcfce7',
-    borderColor: '#86efac',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
+    backgroundColor: '#064e3b',
+    borderColor: '#059669',
+    borderWidth: 1.2,
+    padding: 12,
+    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 10,
+    marginBottom: 4,
+  },
+  successBadgeEmoji: {
+    fontSize: 22,
+  },
+  successBadgeTextBox: {
+    flex: 1,
   },
   successBadgeText: {
-    color: '#15803d',
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#34d399',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  successBadgeSubtext: {
+    color: '#a7f3d0',
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '500',
   },
   actionBtn: {
-    width: '100%',
-    paddingVertical: 14,
     borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  downloadBtn: {
-    backgroundColor: '#0f172a',
-  },
-  downloadBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    borderWidth: 1,
   },
   whatsappBtn: {
-    backgroundColor: '#25D366',
+    backgroundColor: '#15803d',
+    borderColor: '#22c55e',
   },
   whatsappBtnText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  downloadBtn: {
+    backgroundColor: '#1e293b',
+    borderColor: '#38bdf8',
+  },
+  downloadBtnText: {
+    color: '#38bdf8',
+    fontSize: 13,
     fontWeight: '700',
   },
-  instagramBtn: {
-    backgroundColor: '#E1306C',
+  shareBtn: {
+    backgroundColor: '#1b263b',
+    borderColor: '#334155',
   },
-  instagramBtnText: {
+  shareBtnText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  newReportBtn: {
+    backgroundColor: '#0284c7',
+    borderRadius: 10,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+  },
+  newReportBtnText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '700',
-  },
-  regenerateBtn: {
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  regenerateBtnText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });

@@ -567,3 +567,15 @@ export const DEFAULT_INSPECTION_SECTIONS: InspectionSection[] = [
     ],
   },
 ];
+
+export const getCleanInspectionSections = (): InspectionSection[] => {
+  return DEFAULT_INSPECTION_SECTIONS.map((sec) => ({
+    ...sec,
+    items: sec.items.map((item) => ({
+      ...item,
+      status: item.status === 'NA' ? 'NA' : 'OK',
+      observation: '',
+    })),
+  }));
+};
+

@@ -1,8 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { InspectionData } from '../types/inspection';
-import { DEFAULT_INSPECTION_SECTIONS } from '../data/defaultCheckpoints';
-import { DEFAULT_PHOTO_SLOTS, DEFAULT_VEHICLE_INFO, DEFAULT_REMARKS } from '../data/defaultPhotos';
+import { DEFAULT_INSPECTION_SECTIONS, getCleanInspectionSections } from '../data/defaultCheckpoints';
+import {
+  DEFAULT_PHOTO_SLOTS,
+  DEFAULT_VEHICLE_INFO,
+  DEFAULT_REMARKS,
+  CLEAN_VEHICLE_INFO,
+  getCleanPhotoSlots,
+} from '../data/defaultPhotos';
 
 const STORAGE_KEY = '@vehicle_inspection_active_v1';
 const PHOTO_DIR = (FileSystem.documentDirectory || '') + 'vehicle_photos/';
@@ -118,11 +124,30 @@ export class StorageService {
   }
 
   /**
-   * Reset / Create new inspection
+   * Reset / Create brand new clean inspection ready for a new report
    */
   static createInitialInspection(): InspectionData {
     return {
       id: 'insp-' + Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      info: {
+        ...CLEAN_VEHICLE_INFO,
+        inspectionDate: new Date().toISOString().split('T')[0],
+      },
+      sections: getCleanInspectionSections(),
+      standardPhotos: getCleanPhotoSlots(),
+      extraPhotos: [],
+      remarks: '',
+    };
+  }
+
+  /**
+   * Load sample inspection with Tigor data for testing/demo
+   */
+  static createSampleInspection(): InspectionData {
+    return {
+      id: 'insp-sample-' + Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       info: { ...DEFAULT_VEHICLE_INFO },
@@ -143,4 +168,22 @@ export class StorageService {
       console.error('Error clearing:', e);
     }
   }
+
+  /**
+   * Clear saved photos directory
+   */
+  static async clearAllPhotos(): Promise<void> {
+    try {
+      if (FileSystem.documentDirectory) {
+        const dirInfo = await FileSystem.getInfoAsync(PHOTO_DIR);
+        if (dirInfo.exists) {
+          await FileSystem.deleteAsync(PHOTO_DIR, { idempotent: true });
+          await FileSystem.makeDirectoryAsync(PHOTO_DIR, { intermediates: true });
+        }
+      }
+    } catch (err) {
+      console.warn('Error clearing photo directory:', err);
+    }
+  }
 }
+

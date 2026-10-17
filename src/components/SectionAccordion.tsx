@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { InspectionSection, CheckpointStatus } from '../types/inspection';
 import { CheckpointRow } from './CheckpointRow';
+import { Colors } from '../theme/colors';
+import { triggerHaptic } from '../utils/haptics';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface SectionAccordionProps {
   section: InspectionSection;
@@ -24,6 +30,20 @@ export const SectionAccordion: React.FC<SectionAccordionProps> = ({
     {} as Record<string, number>
   );
 
+  const totalItems = section.items.length;
+  const okItems = stats['OK'] || 0;
+  const attentionCount = stats['Attention'] || 0;
+  const failedCount = stats['Failed'] || 0;
+  const percentComplete = Math.round(
+    ((okItems + attentionCount + failedCount + (stats['NA'] || 0)) / totalItems) * 100
+  );
+
+  const toggleOpen = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    triggerHaptic('light');
+    setIsOpen(!isOpen);
+  };
+
   const handleUpdateItemStatus = (itemId: string, newStatus: CheckpointStatus) => {
     const updatedItems = section.items.map((item) =>
       item.id === itemId ? { ...item, status: newStatus } : item
@@ -39,6 +59,7 @@ export const SectionAccordion: React.FC<SectionAccordionProps> = ({
   };
 
   const handleMarkAllOk = () => {
+    triggerHaptic('medium');
     const updatedItems = section.items.map((item) => ({
       ...item,
       status: 'OK' as CheckpointStatus,
@@ -49,40 +70,77 @@ export const SectionAccordion: React.FC<SectionAccordionProps> = ({
   return (
     <View style={styles.card}>
       <TouchableOpacity
-        style={styles.header}
+        style={[styles.header, isOpen && styles.headerOpen]}
         activeOpacity={0.8}
-        onPress={() => setIsOpen(!isOpen)}
+        onPress={toggleOpen}
       >
         <View style={styles.titleArea}>
-          <Text style={styles.titleText}>{section.title}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.sectionNumBadge}>#{section.sectionNumber}</Text>
+            <Text style={styles.titleText}>{section.title}</Text>
+          </View>
+
           <View style={styles.statsBadgesRow}>
-            {stats['Attention'] ? (
-              <View style={[styles.miniBadge, styles.badgeAttn]}>
-                <Text style={styles.badgeAttnText}>{stats['Attention']} Attention</Text>
-              </View>
-            ) : null}
-            {stats['Failed'] ? (
+            {failedCount > 0 && (
               <View style={[styles.miniBadge, styles.badgeFailed]}>
-                <Text style={styles.badgeFailedText}>{stats['Failed']} Failed</Text>
+                <Text style={styles.badgeFailedText}>✕ {failedCount} Failed</Text>
               </View>
-            ) : null}
-            <Text style={styles.itemCountText}>{section.items.length} items</Text>
+            )}
+            {attentionCount > 0 && (
+              <View style={[styles.miniBadge, styles.badgeAttn]}>
+                <Text style={styles.badgeAttnText}>⚠️ {attentionCount} Attn</Text>
+              </View>
+            )}
+            {failedCount === 0 && attentionCount === 0 && okItems === totalItems && (
+              <View style={[styles.miniBadge, styles.badgeAllOk]}>
+                <Text style={styles.badgeAllOkText}>✓ All Pass</Text>
+              </View>
+            )}
+            <Text style={styles.itemCountText}>
+              {okItems}/{totalItems} Checked
+            </Text>
           </View>
         </View>
 
         <View style={styles.headerRight}>
-          <Text style={styles.arrowText}>{isOpen ? '▲' : '▼'}</Text>
+          <View style={styles.chevronCircle}>
+            <Text style={styles.arrowText}>{isOpen ? '▲' : '▼'}</Text>
+          </View>
         </View>
       </TouchableOpacity>
 
+      {/* Progress Line */}
+      <View style={styles.progressBarTrack}>
+        <View
+          style={[
+            styles.progressBarFill,
+            { width: `${Math.min(percentComplete, 100)}%` },
+            failedCount > 0
+              ? { backgroundColor: Colors.status.failed.text }
+              : attentionCount > 0
+              ? { backgroundColor: Colors.status.attention.text }
+              : { backgroundColor: Colors.accent.primary },
+          ]}
+        />
+      </View>
+
       {isOpen && (
         <View style={styles.body}>
+          {/* Quick Action Toolbar */}
           <View style={styles.actionsBar}>
-            <TouchableOpacity style={styles.quickActionBtn} onPress={handleMarkAllOk}>
-              <Text style={styles.quickActionText}>✓ Mark Section as All OK</Text>
+            <Text style={styles.categorySummary}>
+              Reviewing {totalItems} checkpoint items
+            </Text>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              activeOpacity={0.7}
+              onPress={handleMarkAllOk}
+            >
+              <Text style={styles.quickActionText}>✓ Mark All OK</Text>
             </TouchableOpacity>
           </View>
 
+          {/* List of items */}
           {section.items.map((item) => (
             <CheckpointRow
               key={item.id}
@@ -99,90 +157,147 @@ export const SectionAccordion: React.FC<SectionAccordionProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
+    backgroundColor: Colors.background.surface,
+    borderRadius: 14,
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginVertical: 6,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: Colors.background.border,
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    backgroundColor: '#0f172a',
+    backgroundColor: Colors.background.surface,
+  },
+  headerOpen: {
+    backgroundColor: '#1b263b',
   },
   titleArea: {
     flex: 1,
+    paddingRight: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionNumBadge: {
+    backgroundColor: '#1e293b',
+    color: Colors.accent.secondary,
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   titleText: {
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: '700',
-    color: '#ffffff',
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+    flex: 1,
   },
   statsBadgesRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 6,
   },
   miniBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
   },
   badgeAttn: {
-    backgroundColor: 'rgba(245, 158, 11, 0.25)',
+    backgroundColor: Colors.status.attention.bg,
+    borderColor: Colors.status.attention.border,
   },
   badgeAttnText: {
-    fontSize: 9.5,
+    color: Colors.status.attention.text,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#fbbf24',
   },
   badgeFailed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    backgroundColor: Colors.status.failed.bg,
+    borderColor: Colors.status.failed.border,
   },
   badgeFailedText: {
-    fontSize: 9.5,
+    color: Colors.status.failed.text,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#f87171',
+  },
+  badgeAllOk: {
+    backgroundColor: Colors.status.ok.bg,
+    borderColor: Colors.status.ok.border,
+  },
+  badgeAllOkText: {
+    color: Colors.status.ok.text,
+    fontSize: 10,
+    fontWeight: '700',
   },
   itemCountText: {
-    fontSize: 10,
-    color: '#94a3b8',
+    fontSize: 11,
+    color: Colors.text.muted,
     fontWeight: '500',
   },
   headerRight: {
-    marginLeft: 10,
+    marginLeft: 8,
+  },
+  chevronCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#202d42',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   arrowText: {
-    color: '#94a3b8',
-    fontSize: 12,
+    fontSize: 11,
+    color: Colors.text.secondary,
+    fontWeight: '700',
+  },
+  progressBarTrack: {
+    height: 2.5,
+    backgroundColor: '#1b2537',
+    width: '100%',
+  },
+  progressBarFill: {
+    height: '100%',
   },
   body: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0f172a',
   },
   actionsBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f8fafc',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#131e30',
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: Colors.background.border,
+  },
+  categorySummary: {
+    fontSize: 11,
+    color: Colors.text.muted,
   },
   quickActionBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 4,
+    backgroundColor: '#064e3b',
+    borderWidth: 1,
+    borderColor: '#059669',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   quickActionText: {
-    fontSize: 10.5,
-    fontWeight: '600',
-    color: '#334155',
+    color: '#34d399',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

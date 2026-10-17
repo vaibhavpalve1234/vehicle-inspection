@@ -38,3 +38,28 @@ export const DEFAULT_REMARKS = `1) Fire wall major rusted
 3) Dicky floor bend dent minor rusted
 4) Rear windshield glass replace
 5) A/C cooling less effective`;
+
+export const CLEAN_VEHICLE_INFO: VehicleCustomerInfo = {
+  customerName: '',
+  mobile: '',
+  vehicleModel: '',
+  registrationNumber: '',
+  vin: '',
+  odometer: '',
+  inspectionType: 'PDI',
+  inspectionDate: new Date().toISOString().split('T')[0],
+  inspectorName: '',
+};
+
+export const CLEAN_REMARKS = '';
+
+export const getCleanPhotoSlots = (): PhotoSlot[] => {
+  return DEFAULT_PHOTO_SLOTS.map((slot) => ({
+    ...slot,
+    uri: undefined,
+    localPath: undefined,
+    observation: '',
+    status: 'OK',
+  }));
+};
+
