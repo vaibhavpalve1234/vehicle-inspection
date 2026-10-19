@@ -1,0 +1,22 @@
+
+# Normalize text files to LF in Git
+* text=auto eol=lf
+
+# Explicitly normalize source files
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.json   text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.gitignore text eol=lf
+
+# Preserve binary files
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.pdf    binary
+*.apk    binary
+*.ipa    binary

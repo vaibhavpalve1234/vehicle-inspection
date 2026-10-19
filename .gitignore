@@ -1,6 +1,5 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
+# Dependencies
 node_modules/
 
 # Expo
@@ -9,38 +8,77 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
-.kotlin/
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log
+
+# React Native
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+*.ipa
+*.apk
 
-# Metro
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.cxx/
+android/.idea/
+android/captures/
+
+# iOS
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/*.xcworkspace/
+ios/*.xcuserstate
+ios/xcuserdata/
+ios/.DS_Store
+
+# Metro and bundler
 .metro-health-check*
+.metro-cache/
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
+# TypeScript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# IDEs and editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
 
-# binary builds
-*.apk
-*.aab
+# Operating system
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Testing and coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+
+# Local database files (if generated locally)
+*.sqlite
+*.sqlite3
+*.db
+
+# Local photo uploads and generated inspection images
+uploads/
+local-photos/
+photo-cache/
 
